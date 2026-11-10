@@ -16,7 +16,6 @@ class Settings(BaseSettings):
 
     per_case_budget_usd: float = 0.05
     kill_switch: bool = False
-    refund_approval_limit_usd: float = 100.0
 
 
 settings = Settings()
