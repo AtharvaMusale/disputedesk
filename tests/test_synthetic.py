@@ -74,3 +74,18 @@ def test_generation_is_deterministic(con):
     a, b = generate.build(con), generate.build(con)
     assert a["disputes"].complaint_text.tolist() == b["disputes"].complaint_text.tolist()
     assert a["ground_truth"].outcome.tolist() == b["ground_truth"].outcome.tolist()
+
+
+def test_seller_failure_uses_only_past_deliveries(con):
+    """Seller stats must be as of the dispute date: strictly earlier deliveries only (no look-ahead)."""
+    rows = con.execute("""SELECT d.scenario_type,
+        coalesce(h.late_cum / h.delivered_cum, 0) >= ? AND coalesce(h.delivered_cum, 0) >= ? AS failing
+        FROM synthetic.disputes d
+        JOIN (SELECT order_id, min(seller_id) AS sid FROM real.olist_order_items GROUP BY 1) i USING (order_id)
+        ASOF LEFT JOIN derived.seller_history h ON h.seller_id = i.sid AND d.as_of > h.delivered_ts
+        WHERE d.track = 'marketplace'""", [P.SELLER_FAIL_RATE, P.SELLER_FAIL_MIN_ORDERS]).fetchall()
+    for scenario, failing in rows:
+        if scenario == "systemic_merchant":
+            assert failing
+        elif scenario in ("clear_approve_late", "partial_late", "within_grace_deny", "policy_conflict", "over_limit_valid"):
+            assert not failing, scenario

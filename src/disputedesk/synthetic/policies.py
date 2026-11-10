@@ -32,7 +32,7 @@ Applies to delivered orders only. The customer must provide evidence (photo of t
 - Evidence provided: refund the price of the affected item (shipping is not refunded).
 - No evidence: request the evidence. Do not approve or deny until it arrives."""),
     "MKT-04": ("marketplace", "Seller systemic failure", f"""
-A seller is in systemic failure when its late-delivery rate is {SELLER_FAIL_RATE:.0%} or more over at least {SELLER_FAIL_MIN_ORDERS} orders.
+A seller is in systemic failure when {SELLER_FAIL_RATE:.0%} or more of its delivered orders arrived after the estimated delivery date, over at least {SELLER_FAIL_MIN_ORDERS} delivered orders. Only deliveries before the claim date count.
 Any late claim (1 or more days late) on a delivered order from such a seller gets a full refund. This overrides the grace period and the freight-only tier."""),
     "MKT-05": ("marketplace", "New-customer exception", f"""
 A customer whose account was under {NEW_CUSTOMER_DAYS} days old at purchase gets the shipping fee refunded when the order is 1 or more days late, even inside the grace period. From {GRACE_DAYS} days late the standard tiers apply."""),

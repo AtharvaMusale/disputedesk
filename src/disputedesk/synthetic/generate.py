@@ -36,13 +36,12 @@ SELECT o.order_id, c.customer_unique_id AS customer_id, o.order_status AS status
        p.total_paid * {P.BRL_TO_USD} AS total_usd,
        coalesce(i.freight, 0) * {P.BRL_TO_USD} AS freight_usd,
        coalesce(i.first_price, 0) * {P.BRL_TO_USD} AS first_price_usd,
-       r.review_score, coalesce(s.late_rate, 0) AS late_rate, coalesce(s.n_orders, 0) AS seller_orders
+       r.review_score, i.seller_id
 FROM real.olist_orders o
 JOIN real.olist_customers c USING (customer_id)
 JOIN derived.payment_risk p USING (order_id)
 LEFT JOIN items i USING (order_id)
 LEFT JOIN rev r USING (order_id)
-LEFT JOIN derived.seller_reliability s ON s.seller_id = i.seller_id
 """
 
 # name, difficulty, how many, which real orders qualify, claim type(s), and the outcome(s) it must produce
@@ -90,8 +89,19 @@ MERCHANTS = ["Blue Bottle Coffee", "Uber", "Spotify", "Amazon", "Netflix", "Shel
 COMBOS = [("ip", "device"), ("ip", "merchant"), ("device", "merchant"), ("ip", "device", "merchant")]
 
 
-def _prep(df: pd.DataFrame) -> pd.DataFrame:
+def _prep(df: pd.DataFrame, ledger: pd.DataFrame, rng: random.Random) -> pd.DataFrame:
     df = df.copy()
+    for col, base, lo, hi in (("asof_deliv", "delivered_ts", 1, 10), ("asof_est", "est_ts", 8, 30),
+                              ("asof_purchase", "purchase_ts", 7, 20)):  # dispute dates, drawn up front
+        df[col] = df[base] + pd.to_timedelta([rng.randint(lo, hi) for _ in range(len(df))], unit="D")
+    # Seller stats as known on the dispute date: only orders delivered strictly before it (no look-ahead).
+    left = df.loc[df.asof_deliv.notna() & df.seller_id.notna(), ["order_id", "seller_id", "asof_deliv"]]
+    ledger = ledger.assign(delivered_ts=ledger.delivered_ts.astype(left.asof_deliv.dtype))
+    m = pd.merge_asof(left.sort_values("asof_deliv"), ledger.sort_values("delivered_ts"), by="seller_id",
+                      left_on="asof_deliv", right_on="delivered_ts", allow_exact_matches=False)
+    df = df.merge(m[["order_id", "delivered_cum", "late_cum"]], on="order_id", how="left")
+    df["seller_orders"] = df.delivered_cum.fillna(0).astype(int)
+    df["late_rate"] = (df.late_cum / df.delivered_cum).fillna(0)
     df["deliv"] = df.status == "delivered"
     df["sysf"] = (df.late_rate >= P.SELLER_FAIL_RATE) & (df.seller_orders >= P.SELLER_FAIL_MIN_ORDERS)
     df["amt_ok"] = (df.total_usd > 0) & (df.total_usd <= P.MKT_LIMIT)
@@ -141,9 +151,7 @@ def _marketplace(rng, orders, used):
             print(f"  ! {sc['name']}: only {len(rows)} of {sc['n']} available")
         for r in rows.itertuples():
             claim = sc["claim"] if isinstance(sc["claim"], str) else rng.choice(sc["claim"])
-            when = {"est": r.est_ts + timedelta(days=rng.randint(8, 30)),
-                    "purchase": r.purchase_ts + timedelta(days=rng.randint(7, 20))}
-            as_of = when.get(sc.get("asof"), r.delivered_ts + timedelta(days=rng.randint(1, 10))).to_pydatetime()
+            as_of = {"est": r.asof_est, "purchase": r.asof_purchase}.get(sc.get("asof"), r.asof_deliv).to_pydatetime()
             age = rng.randint(3, 25) if sc.get("acct") == "new" else rng.randint(60, 1500)
             h = _history(rng, r.customer_id, as_of, sc.get("abuse", False), "marketplace")
             dl = None if pd.isna(r.days_late) else float(r.days_late)
@@ -268,7 +276,9 @@ def _fintech(rng):
 
 def build(con, seed: int = SEED) -> dict[str, pd.DataFrame]:
     rng = random.Random(seed)
-    m_cases, m_hist, m_accts, bad = _marketplace(rng, _prep(con.execute(ORDERS_SQL).df()), set())
+    ledger = con.execute("SELECT seller_id, delivered_ts, delivered_cum, late_cum FROM derived.seller_history").df()
+    orders = _prep(con.execute(ORDERS_SQL).df(), ledger, rng)
+    m_cases, m_hist, m_accts, bad = _marketplace(rng, orders, set())
     f_cases, f_hist, f_accts, txns, bad2 = _fintech(rng)
     if bad + bad2:
         raise AssertionError(f"{len(bad + bad2)} cases did not produce their scenario's outcome, e.g. {(bad + bad2)[:5]}")

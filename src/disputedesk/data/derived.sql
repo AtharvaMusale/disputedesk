@@ -13,6 +13,8 @@ SELECT *, minutes_late > 0 AS is_late,
        percent_rank() OVER (PARTITION BY customer_state ORDER BY minutes_late) AS pctile_vs_region
 FROM o;
 
+-- LIFETIME snapshot for descriptive use only. It includes deliveries after any given claim, so decisions
+-- must use derived.seller_history below.
 CREATE OR REPLACE TABLE derived.seller_reliability AS
 WITH s AS (
   SELECT DISTINCT i.seller_id, o.order_id, o.order_status,
@@ -54,3 +56,17 @@ SELECT complaint_id,
        regexp_matches(narrative, '(urgent|immediately|homeless|can.t pay|cannot pay|evict)', 'i') AS hardship_language,
        length(narrative) AS narrative_len
 FROM real.cfpb_complaints;
+
+-- Point-in-time ledger: one row per delivered order per seller, with running totals. Stats known at time T
+-- are the last row with delivered_ts < T (an order's lateness is known the moment it is delivered).
+-- RANGE frame (the default) makes orders delivered at the same instant share the same totals.
+CREATE OR REPLACE TABLE derived.seller_history AS
+WITH d AS (
+  SELECT DISTINCT i.seller_id, o.order_id, o.order_delivered_customer_date AS delivered_ts,
+         (o.order_delivered_customer_date > o.order_estimated_delivery_date) AS late
+  FROM real.olist_order_items i JOIN real.olist_orders o USING (order_id)
+  WHERE o.order_status = 'delivered' AND o.order_delivered_customer_date IS NOT NULL
+)
+SELECT seller_id, order_id, delivered_ts, late,
+       count(*) OVER w AS delivered_cum, sum(late::INT) OVER w AS late_cum
+FROM d WINDOW w AS (PARTITION BY seller_id ORDER BY delivered_ts);
