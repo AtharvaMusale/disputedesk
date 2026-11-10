@@ -1,6 +1,6 @@
 .PHONY: setup test lint olist-download cfpb-download cfpb-sample load dq
 setup:        ## create venv and install pinned deps
-	python3.11 -m venv .venv && .venv/bin/pip install -r requirements.txt
+	python3.14 -m venv .venv && .venv/bin/pip install -r requirements.txt
 test:
 	.venv/bin/pytest
 lint:

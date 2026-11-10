@@ -8,7 +8,7 @@ orchestration, observability, cost control, evaluation, governance/safety.
 > Architecture diagram and results tables arrive in Phase 8.
 
 ## Quickstart (data pipeline)
-Needs Python 3.11, ~3 GB free disk, and a free [Kaggle API token](https://www.kaggle.com/settings) saved to `~/.kaggle/access_token`.
+Needs Python 3.14, ~3 GB free disk, and a free [Kaggle API token](https://www.kaggle.com/settings) saved to `~/.kaggle/access_token`.
 
 ```bash
 cp .env.example .env      # defaults work for the data pipeline
