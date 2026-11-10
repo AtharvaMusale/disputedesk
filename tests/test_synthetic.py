@@ -1,5 +1,6 @@
 """Checks on the generated synthetic layer. Skipped until `make load && make synth` has run."""
 import json
+from itertools import pairwise
 from pathlib import Path
 
 import duckdb
@@ -89,3 +90,35 @@ def test_seller_failure_uses_only_past_deliveries(con):
             assert failing
         elif scenario in ("clear_approve_late", "partial_late", "within_grace_deny", "policy_conflict", "over_limit_valid"):
             assert not failing, scenario
+
+
+def test_customer_history_is_possible_and_point_in_time(con):
+    assert one(con, "SELECT count(*) FROM derived.dispute_features WHERE refund_to_order_ratio > 1 OR orders_total < refunds_365d") == 0
+    # marketplace order counts include only real orders placed on or before the dispute date
+    assert one(con, """SELECT count(*) FROM synthetic.disputes d JOIN derived.dispute_features f USING (dispute_id)
+        WHERE d.track = 'marketplace' AND f.orders_total - f.refunds_365d <> (
+          SELECT count(*) FROM real.olist_orders o JOIN real.olist_customers c USING (customer_id)
+          WHERE c.customer_unique_id = d.customer_id AND o.order_purchase_timestamp <= d.as_of)""") == 0
+
+
+def test_delay_percentiles_defined_for_delivered_orders(con):
+    assert one(con, """SELECT count(*) FROM derived.dispute_features f JOIN synthetic.disputes d USING (dispute_id)
+        JOIN real.olist_orders o USING (order_id) WHERE o.order_status = 'delivered' AND (
+          f.delay_pctile_vs_seller IS NULL OR f.delay_pctile_vs_region IS NULL
+          OR f.delay_pctile_vs_seller NOT BETWEEN 0 AND 1)""") == 0
+
+
+def test_fintech_ids_do_not_reveal_scenario(con):
+    seq = [s for (s,) in con.execute("SELECT scenario_type FROM synthetic.disputes WHERE track = 'fintech' ORDER BY customer_id").fetchall()]
+    assert sum(a != b for a, b in pairwise(seq)) > 100  # sequential ids would give only 10 changes
+    assert one(con, "SELECT count(*) FROM synthetic.disputes d LEFT JOIN synthetic.transactions t USING (txn_id) WHERE d.track = 'fintech' AND t.txn_id IS NULL") == 0
+    assert one(con, "SELECT count(*) FROM synthetic.disputes d LEFT JOIN synthetic.customer_accounts a USING (customer_id) WHERE a.customer_id IS NULL") == 0
+
+
+def test_connect_read_only_rejects_writes():
+    from disputedesk.data.load import connect
+
+    c = connect(read_only=True)
+    with pytest.raises(duckdb.Error):
+        c.execute("CREATE TABLE should_not_exist (a INT)")
+    c.close()

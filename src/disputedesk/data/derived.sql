@@ -1,8 +1,10 @@
 -- Derived insight tables from REAL data only (DuckDB SQL). Refund history and dispute patterns
 -- need the synthetic disputes and are built in Phase 2.
+-- Percentiles here are LIFETIME (they rank against deliveries after any given claim). For decisions use
+-- derived.dispute_features, which recomputes them as of the dispute date.
 CREATE OR REPLACE TABLE derived.delay_severity AS
 WITH o AS (
-  SELECT o.order_id, o.customer_id, c.customer_state,
+  SELECT o.order_id, o.customer_id, c.customer_state, o.order_delivered_customer_date AS delivered_ts,
          (SELECT min(seller_id) FROM real.olist_order_items i WHERE i.order_id = o.order_id) AS seller_id,
          date_diff('minute', o.order_estimated_delivery_date, o.order_delivered_customer_date) AS minutes_late
   FROM real.olist_orders o JOIN real.olist_customers c USING (customer_id)
@@ -30,6 +32,8 @@ SELECT s.seller_id, count(*) AS n_orders,
 FROM s LEFT JOIN r USING (order_id)
 GROUP BY s.seller_id;
 
+-- LIFETIME per-customer totals (descriptive only; includes orders after any claim). For decisions use
+-- derived.dispute_features.
 CREATE OR REPLACE TABLE derived.customer_profile AS
 SELECT c.customer_unique_id, count(DISTINCT o.order_id) AS n_orders,
        min(o.order_purchase_timestamp) AS first_order, max(o.order_purchase_timestamp) AS last_order,

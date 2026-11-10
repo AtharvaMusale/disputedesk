@@ -9,8 +9,9 @@ OLIST = Path("data/raw/olist")
 OLIST_TABLES = ["customers", "sellers", "products", "orders", "order_items", "order_payments", "order_reviews"]
 
 
-def connect() -> duckdb.DuckDBPyConnection:
-    return duckdb.connect(settings.duckdb_path)
+def connect(read_only: bool = False) -> duckdb.DuckDBPyConnection:
+    # DuckDB allows one read-write process; services and checks that only read should pass read_only=True
+    return duckdb.connect(settings.duckdb_path, read_only=read_only)
 
 
 def main() -> None:

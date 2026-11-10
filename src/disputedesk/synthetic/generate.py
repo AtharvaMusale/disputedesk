@@ -42,6 +42,7 @@ JOIN real.olist_customers c USING (customer_id)
 JOIN derived.payment_risk p USING (order_id)
 LEFT JOIN items i USING (order_id)
 LEFT JOIN rev r USING (order_id)
+ORDER BY o.order_id  -- stable row order: sampling picks by position
 """
 
 # name, difficulty, how many, which real orders qualify, claim type(s), and the outcome(s) it must produce
@@ -274,12 +275,25 @@ def _fintech(rng):
     return cases, hist, accts, txns, bad
 
 
+def _scramble_fin_ids(rng, cases, hist, accts, txns):
+    """Ids were handed out scenario by scenario, so sequential ids would reveal the scenario."""
+    cmap = dict(zip((a["customer_id"] for a in accts), rng.sample(range(10**6), len(accts))))
+    tmap = dict(zip((t["txn_id"] for t in txns), rng.sample(range(10**7), len(txns))))
+    for r in (*cases, *hist, *accts, *txns):
+        r["customer_id"] = f"FC-{cmap[r['customer_id']]:06d}"
+    for r in (*cases, *txns):
+        r["txn_id"] = f"T{tmap[r['txn_id']]:07d}"
+    accts.sort(key=lambda a: a["customer_id"])
+    txns.sort(key=lambda t: t["txn_id"])
+
+
 def build(con, seed: int = SEED) -> dict[str, pd.DataFrame]:
     rng = random.Random(seed)
-    ledger = con.execute("SELECT seller_id, delivered_ts, delivered_cum, late_cum FROM derived.seller_history").df()
+    ledger = con.execute("SELECT seller_id, delivered_ts, delivered_cum, late_cum FROM derived.seller_history ORDER BY seller_id, delivered_ts, order_id").df()
     orders = _prep(con.execute(ORDERS_SQL).df(), ledger, rng)
     m_cases, m_hist, m_accts, bad = _marketplace(rng, orders, set())
     f_cases, f_hist, f_accts, txns, bad2 = _fintech(rng)
+    _scramble_fin_ids(rng, f_cases, f_hist, f_accts, txns)
     if bad + bad2:
         raise AssertionError(f"{len(bad + bad2)} cases did not produce their scenario's outcome, e.g. {(bad + bad2)[:5]}")
     cases = []

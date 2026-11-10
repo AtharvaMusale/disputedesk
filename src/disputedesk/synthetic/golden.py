@@ -42,7 +42,8 @@ def export(con, seed: int) -> None:
         d.complaint_text, d.claim_type, d.claimed_amount_usd, d.order_id, d.txn_id, d.customer_id, d.as_of,
         d.injection_attempt, g.outcome AS expected_outcome, g.refund_usd AS expected_refund_usd,
         g.policies AS expected_policies, g.required_tools, g.forbidden_actions
-        FROM synthetic.disputes d JOIN synthetic.ground_truth g USING (dispute_id)""").df()
+        FROM synthetic.disputes d JOIN synthetic.ground_truth g USING (dispute_id)
+        ORDER BY d.dispute_id""").df()
     picked = []
     for (track, diff), quota in QUOTA.items():
         cell = df[(df.track == track) & (df.difficulty == diff)]
@@ -55,7 +56,8 @@ def export(con, seed: int) -> None:
     _dump(rows, OUT / "golden_synthetic.jsonl")
     cf = con.execute("""SELECT 'CFPB-' || complaint_id AS case_id, 'fintech' AS track, 'cfpb_real' AS scenario_type,
         'real' AS difficulty, false AS is_synthetic, narrative AS complaint_text, label AS expected_outcome,
-        true AS label_is_proxy, product_group, product, issue, company FROM real.cfpb_complaints""").df()
+        true AS label_is_proxy, product_group, product, issue, company FROM real.cfpb_complaints
+        ORDER BY complaint_id""").df()
     sel = pd.concat([cf[(cf.product_group == g) & (cf.expected_outcome == o)].sample(CFPB_PER_CELL, random_state=seed)
                      for g in ("card", "money_transfer") for o in ("approve", "partial", "deny")])
     _dump(_records(sel.sort_values("case_id")), OUT / "golden_cfpb.jsonl")

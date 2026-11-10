@@ -30,7 +30,7 @@ KNOWN = {"orders: delivered w/o delivery date": 8, "payments: non-positive value
 
 
 def main() -> int:
-    con, bad = connect(), 0
+    con, bad = connect(read_only=True), 0
     for name, sql in CHECKS.items():
         n = con.execute(sql).fetchone()[0]
         status = "ok  " if n == 0 else "warn" if n <= KNOWN.get(name, 0) else "FAIL"
