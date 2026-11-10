@@ -1,0 +1,12 @@
+pydantic-settings
+python-dotenv
+pytest
+ruff
+pandas
+requests
+kaggle
+sqlalchemy
+psycopg2-binary
+six
+pyarrow
+duckdb
