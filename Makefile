@@ -1,4 +1,4 @@
-.PHONY: setup test lint olist-download cfpb-download cfpb-sample load dq
+.PHONY: setup test lint olist-download cfpb-download cfpb-sample load synth dq
 setup:        ## create venv and install pinned deps
 	python3.14 -m venv .venv && .venv/bin/pip install -r requirements.txt
 test:
@@ -15,5 +15,7 @@ cfpb-sample:    ## draw 10k per group -> data/processed/cfpb_sample.parquet
 	$(PY) -m disputedesk.data.sample_cfpb
 load:           ## load real data + build derived tables
 	$(PY) -m disputedesk.data.load
+synth:          ## policies, synthetic disputes, golden set (needs `make load`)
+	$(PY) -m disputedesk.synthetic.generate
 dq:
 	$(PY) -m disputedesk.data.quality

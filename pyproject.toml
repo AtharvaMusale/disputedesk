@@ -9,3 +9,6 @@ where = ["src"]
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
+
+[tool.ruff.lint]
+ignore = ["C408"]  # dict(key=...) reads better in the scenario tables
