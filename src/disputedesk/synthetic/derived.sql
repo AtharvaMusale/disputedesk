@@ -44,7 +44,7 @@ WITH h AS (
 )
 SELECT f.dispute_id, f.customer_id, f.track, f.refunds_30d, f.refunds_90d, f.refunds_365d, f.orders_total,
        f.refunds_365d / nullif(f.orders_total, 0)::DOUBLE AS refund_to_order_ratio,
-       date_diff('day', a.signup_ts, f.as_of) AS tenure_days,
+       CAST(floor((epoch(f.as_of) - epoch(a.signup_ts)) / 86400) AS INTEGER) AS tenure_days,  -- whole elapsed days
        f.prior_claims_on_time_orders,
        ds.is_late AS order_was_late,
        bs.pct AS delay_pctile_vs_seller, br.pct AS delay_pctile_vs_region

@@ -87,9 +87,30 @@ make cfpb-download        # CFPB mirror (about 925 MB), filtered
 make cfpb-sample          # 10,000 complaints per product group
 make load                 # build data/disputedesk.duckdb: real and derived tables
 make synth                # policies, synthetic disputes, golden set
+make index                # Chroma index over policies/ (local embeddings, first run downloads a small model)
 make dq                   # data-quality checks
 make test
+make api                  # tool service on http://localhost:8000 (interactive docs at /docs)
+make rag-eval             # retrieval quality on the golden set, no LLM
 ```
+
+## Tool service and policy search
+
+A FastAPI service (`src/disputedesk/tools/`) exposes the tools the agents will call. Read tools use a read-only
+DuckDB connection and take `as_of`, the dispute date: they answer only from what was known then, so a delivery,
+review or seller delivery after that date is never visible.
+
+Read tools (`GET /tools/<name>`): `get_order`, `get_delivery_events`, `get_customer_history`, `get_seller_stats`,
+`get_payment`, `search_policy`. Actions (`POST`): `issue_refund` and `escalate_to_human`, which write to an append-only
+SQLite log with one record per case and kind, so a retry cannot pay twice. `make api` serves interactive docs at `/docs`.
+
+`search_policy` retrieves from a local Chroma index of `policies/` (one chunk per policy, `all-MiniLM-L6-v2`
+embeddings, no API key). `make rag-eval` reports how often the policies that decide a golden case are retrieved.
+With 10 policies, hit@3 means the right policy is in 3 of the 5 to 7 candidates for that track, so read it
+alongside hit@1.
+
+Tested end to end: rebuilding every case's facts from tool outputs alone and applying the policy rules
+reproduces the stored ground truth for all 1,960 synthetic disputes.
 
 ## Repository layout
 
@@ -100,7 +121,9 @@ src/disputedesk/
   config.py                  Settings from environment / .env
   data/                      Download, sampling, loading, derived SQL, quality checks
   synthetic/                 Policies, rules (ground truth), generator, golden-set export
-  tools/ rag/ risk/          Not yet implemented
+  tools/                     FastAPI tool service, tool logic, append-only action log
+  rag/                       Chroma policy index, search, retrieval evaluation
+  risk/                      Not yet implemented
   agents/ llm/               Not yet implemented
   observability/ governance/ Not yet implemented
 tests/                       Rule, synthetic-data and config tests

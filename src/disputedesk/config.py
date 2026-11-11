@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     gcp_location: str = "us-central1"
 
     duckdb_path: str = "data/disputedesk.duckdb"
+    actions_db_path: str = "data/actions.db"  # append-only refund/escalation log (SQLite)
+    chroma_path: str = "data/chroma_db"
 
     per_case_budget_usd: float = 0.05
     kill_switch: bool = False

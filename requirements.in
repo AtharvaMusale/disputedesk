@@ -8,3 +8,7 @@ kaggle
 six
 pyarrow
 duckdb
+fastapi
+uvicorn
+httpx
+chromadb

@@ -13,3 +13,4 @@ data/golden/*.parquet
 chroma_db/
 *.duckdb
 *.duckdb.wal
+data/actions.db*

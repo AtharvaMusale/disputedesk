@@ -27,7 +27,8 @@ WITH items AS (
          arg_min(price, order_item_id) AS first_price
   FROM real.olist_order_items GROUP BY 1),
 rev AS (
-  SELECT order_id, arg_max(review_score, review_creation_date) AS review_score
+  SELECT order_id, arg_max(review_score, review_answer_timestamp) AS review_score,
+         max(review_answer_timestamp) AS review_ts
   FROM real.olist_order_reviews GROUP BY 1)
 SELECT o.order_id, c.customer_unique_id AS customer_id, o.order_status AS status,
        o.order_purchase_timestamp AS purchase_ts, o.order_estimated_delivery_date AS est_ts,
@@ -36,7 +37,7 @@ SELECT o.order_id, c.customer_unique_id AS customer_id, o.order_status AS status
        p.total_paid * {P.BRL_TO_USD} AS total_usd,
        coalesce(i.freight, 0) * {P.BRL_TO_USD} AS freight_usd,
        coalesce(i.first_price, 0) * {P.BRL_TO_USD} AS first_price_usd,
-       r.review_score, i.seller_id
+       r.review_score, r.review_ts, i.seller_id
 FROM real.olist_orders o
 JOIN real.olist_customers c USING (customer_id)
 JOIN derived.payment_risk p USING (order_id)
@@ -95,6 +96,8 @@ def _prep(df: pd.DataFrame, ledger: pd.DataFrame, rng: random.Random) -> pd.Data
     for col, base, lo, hi in (("asof_deliv", "delivered_ts", 1, 10), ("asof_est", "est_ts", 8, 30),
                               ("asof_purchase", "purchase_ts", 7, 20)):  # dispute dates, drawn up front
         df[col] = df[base] + pd.to_timedelta([rng.randint(lo, hi) for _ in range(len(df))], unit="D")
+    # A review only counts if the customer had submitted it by the dispute date.
+    df["review_score"] = df.review_score.where(~(df.review_ts > df.asof_deliv))
     # Seller stats as known on the dispute date: only orders delivered strictly before it (no look-ahead).
     left = df.loc[df.asof_deliv.notna() & df.seller_id.notna(), ["order_id", "seller_id", "asof_deliv"]]
     ledger = ledger.assign(delivered_ts=ledger.delivered_ts.astype(left.asof_deliv.dtype))
